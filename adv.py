@@ -39,7 +39,9 @@ class TraversalGraph:
     def __init__(self, rooms={}):
         self.rooms = rooms
         self.curr_room = None
+        self.curr_room_id = None
         self.prev_room = None
+        self.prev_room_id = None
         self.invert_dir = {'n': 's', 's': 'n', 'e': 'w', 'w': 'e'}
 
     def __len__(self):
@@ -51,8 +53,10 @@ class TraversalGraph:
 
     def move_room(self, new_room, prev_room=None):
         self.curr_room = self.rooms[new_room.id]
+        self.curr_room_id = new_room.id
         if prev_room:
-            self.prev_room = prev_room
+            self.prev_room = self.rooms[prev_room.id]
+            self.prev_room_id = prev_room.id
         return self
 
     def exploring(self):
@@ -79,6 +83,9 @@ class TraversalGraph:
             if len(self.rooms[new_room.id]['?']) == 0:
                 del self.rooms[new_room.id]['?']
 
+            if len(self.rooms[prev_room.id]['?']) == 0:
+                del self.rooms[prev_room.id]['?']
+
         self.move_room(new_room, prev_room)
         return self
 
@@ -90,6 +97,27 @@ class TraversalGraph:
 
     def room_has_unseen(self, room_id):
         return '?' in self.rooms[room_id]
+
+    def path_to_unseen(self):
+        seen = set()
+        queue = [[self.curr_room]]
+
+        while queue:
+            path = queue.pop(0)
+            neighbor = path[-1]
+            neighbor_id = list(neighbor.values())[0]
+            if neighbor_id not in seen:
+                neighbor_neighbors = self.rooms[neighbor_id]
+                for direction, room_id in neighbor_neighbors.items():
+                    new_path = list(path)
+                    if direction == '?':
+                        return new_path
+                    new_path.append({direction: room_id})
+                    queue.append(new_path)
+
+                # mark node as explored
+                seen.add(neighbor_id)
+        return 'FAIL'
 
 
 previous_dir = None
@@ -107,23 +135,17 @@ while len(trav_graph) < len(room_graph):
             player.current_room,
             prev_room,
             random_direction)
-        print(trav_graph)
-        print(player.current_room.id)
         traversal_path.append(random_direction)
     else:
         # bfs backtracking to find room with unexplored neighbors
-        direction = player.current_room.get_exits()
-        seen = set()
-        queue = deque([direction])
-        while queue:
-            path = queue.popleft()
-            last_direction = path[-1]
-            for directions in path:
+        back_track_path = trav_graph.path_to_unseen()
+        for instruct in back_track_path:
+            instruct_dir = list(instruct.keys())[0]
+            traversal_path.append(instruct_dir)
+            prev_room = player.current_room
+            player.travel(instruct_dir)
+            trav_graph.move_room(player.current_room, prev_room)
 
-            traversal_path.append(direction)
-
-
-print(traversal_path)
 """
 my code ends here
 """
