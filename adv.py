@@ -22,13 +22,13 @@ room_graph = literal_eval(open(map_file, "r").read())
 world.load_graph(room_graph)
 
 # Print an ASCII map
-world.print_rooms()
+# world.print_rooms()
 
 player = Player(world.starting_room)
 
 # Fill this out with directions to walk
 # traversal_path = ['n', 'n']
-traversal_path = []
+# traversal_path = []
 
 """
 my code starts here
@@ -105,7 +105,7 @@ class TravelGraph:
         if len(exits) == 0:
             return False
 
-        return exits[-1]
+        return random.choice(exits)
 
     def move_if_worth_it(self, unseen_direction):
         """
