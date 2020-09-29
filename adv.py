@@ -35,116 +35,121 @@ my code starts here
 """
 
 
-class TraversalGraph:
-    def __init__(self, rooms={}):
-        self.rooms = rooms
-        self.curr_room = None
-        self.curr_room_id = None
-        self.prev_room = None
-        self.prev_room_id = None
-        self.invert_dir = {'n': 's', 's': 'n', 'e': 'w', 'w': 'e'}
+class TravelGraph:
+    def __init__(self, room_graph, player, path=[], rooms={}):
+        self.room_graph = room_graph
+        self.player = player
+        self.path = path
+        self.rooms = {}
 
-    def __len__(self):
-        return len(self.rooms)
+    def invert(self, d):
+        """
+        Get the opposite direction. This is useful for backtracking.
+        """
+        inverter = {'n': 's', 's': 'n', 'e': 'w', 'w': 'e'}
+        return inverter[d]
 
-    def __str__(self):
-        return str(
-            f"rooms: {self.rooms} \n curr_room: {self.curr_room}")
+    def add_room(self, r):
+        """
+        Add the room to the graph map.
+        """
+        self.rooms[r] = {direction: '?' for direction in r.get_exits()}
 
-    def move_room(self, new_room, prev_room=None):
-        self.curr_room = self.rooms[new_room.id]
-        self.curr_room_id = new_room.id
-        if prev_room:
-            self.prev_room = self.rooms[prev_room.id]
-            self.prev_room_id = prev_room.id
         return self
 
-    def exploring(self):
-        if '?' in self.curr_room:
-            return True
-        else:
+    def seen_room(self, r):
+        """
+        Return whether or not i've seen the room
+        """
+        return r in self.rooms
+
+    def connect_rooms(self, r1, r2, d):
+        """
+        Add relationship between rooms.
+        """
+        self.rooms[r1][d] = r2
+        self.rooms[r2][self.invert(d)] = r1
+
+    def find_unexplored_room(self, r):
+        """
+        BFS to find shortest path to room with unexplored paths.
+        """
+        s = set()
+        q = deque([[r, []]])
+        while q:
+            room, path = q.popleft()
+            if room not in s:
+                s.add(room)
+                for direction in self.rooms[room]:
+                    if self.rooms[room][direction] == '?':
+                        return path
+                    else:
+                        new_path = list(path)
+                        new_path.append(direction)
+                        next_room = self.rooms[room][direction]
+                        q.append([next_room, new_path])
+        return []
+
+    def still_unseen(self):
+        """
+        Return whether or not there's more unseen rooms
+        """
+        return len(self.rooms) < len(self.room_graph)
+
+    def get_unseen_directions(self):
+        """
+        Return a list of directions that are unexplored. Return false if has none.
+        """
+        exits = [direction for direction,
+                 seen in self.rooms[self.player.current_room].items() if seen == '?']
+        if len(exits) == 0:
             return False
 
-    def add_and_move_room(self, new_room, prev_room=None,
-                          direction_came_from=None):
-        exits = new_room.get_exits()
+        return exits[-1]
 
-        self.rooms[new_room.id] = {
-            '?': set(direction for direction in exits)
-        }
-        if (direction_came_from) and (prev_room):
-            self.rooms[new_room.id][self.invert_dir[direction_came_from]
-                                    ] = prev_room.id
-            self.rooms[prev_room.id][direction_came_from] = new_room.id
-            self.rooms[prev_room.id]['?'].remove(direction_came_from)
-            self.rooms[new_room.id]['?'].remove(
-                self.invert_dir[direction_came_from])
+    def move_if_worth_it(self, unseen_direction):
+        """
+        Move forward if it's a room I haven't explored yet.
+        If i have, just go back and act like it never happened.
+        """
+        prev_room = self.player.current_room
+        self.player.travel(unseen_direction)
 
-            if len(self.rooms[new_room.id]['?']) == 0:
-                del self.rooms[new_room.id]['?']
+        next_room = self.player.current_room
+        self.path.append(unseen_direction)
 
-            if len(self.rooms[prev_room.id]['?']) == 0:
-                del self.rooms[prev_room.id]['?']
+        if self.seen_room(next_room) == False:
+            self.add_room(next_room)
+        else:
+            self.player.travel(self.invert(unseen_direction))
+            self.path.pop()
 
-        self.move_room(new_room, prev_room)
+        self.connect_rooms(prev_room, next_room, unseen_direction)
+
         return self
 
-    def get_random_unseen_direction(self):
-        return random.choice(list(self.curr_room['?']))
-
-    def update_room(self):
-        pass
-
-    def room_has_unseen(self, room_id):
-        return '?' in self.rooms[room_id]
-
-    def path_to_unseen(self):
-        seen = set()
-        queue = [[self.curr_room]]
-
-        while queue:
-            path = queue.pop(0)
-            neighbor = path[-1]
-            neighbor_id = list(neighbor.values())[0]
-            if neighbor_id not in seen:
-                neighbor_neighbors = self.rooms[neighbor_id]
-                for direction, room_id in neighbor_neighbors.items():
-                    new_path = list(path)
-                    if direction == '?':
-                        return new_path
-                    new_path.append({direction: room_id})
-                    queue.append(new_path)
-
-                # mark node as explored
-                seen.add(neighbor_id)
-        return 'FAIL'
+    def explore(self):
+        """
+        Main function that traverses the graph.
+        """
+        self.add_room(self.player.current_room)
+        while self.still_unseen():
+            unseen_direction = self.get_unseen_directions()
+            if unseen_direction:
+                self.move_if_worth_it(unseen_direction)
+            else:
+                path_to_unexplored = self.find_unexplored_room(
+                    self.player.current_room)
+                self.path.extend(path_to_unexplored)
+                for direction in path_to_unexplored:
+                    self.player.travel(direction)
+        return self.path
 
 
-previous_dir = None
+trav_graph = TravelGraph(room_graph, player)
+traversal_path = trav_graph.explore()
 
-trav_graph = TraversalGraph()
-trav_graph.add_and_move_room(player.current_room)
-
-while len(trav_graph) < len(room_graph):
-    prev_room = player.current_room
-    if trav_graph.exploring():
-        # explore randomly until i hit a deadend
-        random_direction = trav_graph.get_random_unseen_direction()
-        player.travel(random_direction)
-        trav_graph.add_and_move_room(
-            player.current_room,
-            prev_room,
-            random_direction)
-        traversal_path.append(random_direction)
-    else:
-        # bfs backtracking to find room with unexplored neighbors
-        back_track_path = trav_graph.path_to_unseen()
-        for instruct in back_track_path:
-            instruct_dir = list(instruct.keys())[0]
-            traversal_path.append(instruct_dir)
-            prev_room = player.current_room
-            player.travel(instruct_dir)
-            trav_graph.move_room(player.current_room, prev_room)
+# Finished and it does it in 997 moves. Could be refactored.
 
 """
 my code ends here
@@ -170,12 +175,12 @@ else:
 #######
 # UNCOMMENT TO WALK AROUND
 #######
-player.current_room.print_room_description(player)
-while True:
-    cmds = input("-> ").lower().split(" ")
-    if cmds[0] in ["n", "s", "e", "w"]:
-        player.travel(cmds[0], True)
-    elif cmds[0] == "q":
-        break
-    else:
-        print("I did not understand that command.")
+# player.current_room.print_room_description(player)
+# while True:
+#     cmds = input("-> ").lower().split(" ")
+#     if cmds[0] in ["n", "s", "e", "w"]:
+#         player.travel(cmds[0], True)
+#     elif cmds[0] == "q":
+#         break
+#     else:
+#         print("I did not understand that command.")
